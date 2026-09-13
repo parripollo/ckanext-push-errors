@@ -7,7 +7,7 @@ from ckan import __version__ as ckan_version
 from ckan.common import current_user
 from ckan.plugins import toolkit
 from ckanext.push_errors import __VERSION__ as push_errors_version
-from ckanext.push_errors.redis import get_cache
+from ckan.lib import kvstore
 
 log = logging.getLogger(__name__)
 
@@ -16,26 +16,25 @@ def can_send_message():
     """
     Verifica si se puede enviar una nueva notificación según los límites definidos.
     """
-    cache = get_cache()
     limit_minute = int(toolkit.config.get('ckanext.push_errors.max_messages_minute', 3))  # Default: 3
     limit_hour = int(toolkit.config.get('ckanext.push_errors.max_messages_hour', 10))    # Default: 10
 
     current_minute = datetime.now().strftime('%Y%m%d%H%M')
     current_hour = datetime.now().strftime('%Y%m%d%H')
 
-    # Claves para Redis
+    # Counter keys (one per minute, one per hour)
     minute_key = f'push_errors:minute:{current_minute}'
     hour_key = f'push_errors:hour:{current_hour}'
 
     # Incrementar contadores
-    minute_count = cache.incr(minute_key)
-    hour_count = cache.incr(hour_key)
+    minute_count = kvstore.incr(minute_key)
+    hour_count = kvstore.incr(hour_key)
 
     # Define expire in the last call
     if minute_count == 1:
-        cache.expire(minute_key, 60)  # Expira en 60 segundos
+        kvstore.expire(minute_key, 60)  # Expira en 60 segundos
     if hour_count == 1:
-        cache.expire(hour_key, 3600)  # Expira en 1 hora
+        kvstore.expire(hour_key, 3600)  # Expira en 1 hora
 
     # Verify limits
     if minute_count > limit_minute:
