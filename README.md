@@ -1,5 +1,4 @@
-[![Tests CKAN 2.12](https://github.com/unckan/ckanext-push-errors/workflows/Tests%20CKAN%202.12/badge.svg)](https://github.com/unckan/ckanext-push-errors/actions/workflows/test-2.12.yml)
-[![Tests CKAN 2.11](https://github.com/unckan/ckanext-push-errors/workflows/Tests%20CKAN%202.11/badge.svg)](https://github.com/unckan/ckanext-push-errors/actions/workflows/test-2.11.yml)
+[![Tests](https://github.com/parripollo/ckanext-push-errors/workflows/Tests/badge.svg)](https://github.com/parripollo/ckanext-push-errors/actions/workflows/test.yml)
 
 
 # ckanext-push-errors
@@ -18,6 +17,7 @@ Compatibility with core CKAN versions:
 | 2.10 and earlier | Until 0.1.6  |
 | 2.11            | Yes           |
 | 2.12            | Yes           |
+| [PostgreSQL-only CKAN](https://github.com/parripollo/ckanito) | Yes           |
 
 ## Installation
 

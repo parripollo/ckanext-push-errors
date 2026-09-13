@@ -1,0 +1,81 @@
+name: Tests
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install requirements
+        run: pip install flake8 pycodestyle
+      - name: Check syntax
+        run: flake8 . --count --select=E901,E999,F821,F822,F823 --show-source --statistics --exclude ckan
+      - name: Run flake8
+        run: flake8 . --count --max-line-length=127 --statistics --exclude ckan
+
+  test:
+    needs: lint
+    # Tested against the PostgreSQL-only CKAN branch
+    # (https://github.com/parripollo/ckanito): no Solr, no Redis, no CKAN
+    # docker image. CKAN is cloned and installed from source in the job.
+    name: CKAN PostgreSQL only (parripollo/ckanito master)
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.10-bookworm
+    services:
+      ckan-postgres:
+        image: postgres:16
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_USER: ckan
+          POSTGRES_PASSWORD: ckan
+    env:
+      CKAN_REPO: https://github.com/parripollo/ckanito.git
+      CKAN_BRANCH: master
+      CKAN_SRC: /srv/app/src/ckan
+      PGPASSWORD: ckan
+      PGHOST: ckan-postgres
+      PGUSER: ckan
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install CKAN from source
+      run: |
+        apt-get update && apt-get install -y postgresql-client
+        git clone --depth 1 --branch "$CKAN_BRANCH" "$CKAN_REPO" "$CKAN_SRC"
+        pip install -U pip setuptools
+        pip install -r "$CKAN_SRC/requirements.txt" -r "$CKAN_SRC/dev-requirements.txt"
+        pip install -e "$CKAN_SRC"
+
+    - name: Create the test databases
+      run: |
+        psql -c "CREATE USER ckan_default WITH PASSWORD 'pass' NOSUPERUSER NOCREATEDB NOCREATEROLE;"
+        psql -c "CREATE USER datastore_read WITH PASSWORD 'pass' NOSUPERUSER NOCREATEDB NOCREATEROLE;"
+        psql -c "CREATE USER datastore_write WITH PASSWORD 'pass' NOSUPERUSER NOCREATEDB NOCREATEROLE;"
+        createdb --encoding=utf-8 --owner=ckan_default ckan_test
+        createdb --encoding=utf-8 --owner=datastore_write datastore_test
+        cd "$CKAN_SRC"
+        ckan -c test-core-ci.ini datastore set-permissions | psql
+        psql --dbname=datastore_test -c "CREATE EXTENSION tablefunc;"
+
+    - name: Install the extension
+      run: |
+        pip install -r requirements.txt
+        pip install -r dev-requirements.txt
+        pip install -e .
+        sed -i -e "s#use = config:.*#use = config:$CKAN_SRC/test-core-ci.ini#" test.ini
+
+    - name: Setup extension
+      run: |
+        ckan -c test.ini db init
+        ckan -c test.ini db pending-migrations --apply
+
+    - name: Run tests
+      run: pytest --ckan-ini=test.ini --cov=ckanext.push_errors --disable-warnings ckanext/push_errors/tests
