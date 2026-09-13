@@ -74,7 +74,7 @@ class TestPushErrorLogging:
         mock_post.side_effect = requests.RequestException("Network error")
         response = push_message("Test message")
         mock_log.error.assert_called_once_with(
-            'push-errors: Failed to send message to http://mock-url.com. Exception: Network error'
+            'push-errors: Failed to send message to http://mock-url.com/.... Exception: Network error'
         )
         assert response is None
 
@@ -86,3 +86,31 @@ class TestPushErrorLogging:
             log.addHandler(push_error_handler)
             log.critical("This is a critical error!")
             mock_push_message.assert_called_once_with(ANY)
+
+
+class TestWebhookUrlStaysOutOfTheLogs:
+    """Webhook URLs carry a secret: the logs show the host only."""
+
+    WEBHOOK = "https://hooks.slack.com/services/T000/B000/SECRET-TOKEN"
+
+    @pytest.mark.ckan_config("ckanext.push_errors.url", WEBHOOK)
+    @patch("ckanext.push_errors.logging.can_send_message", return_value=True)
+    @patch("ckanext.push_errors.logging.requests.post")
+    def test_sent_message(self, mock_post, _, caplog):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.text = "ok"
+        with caplog.at_level(logging.DEBUG, logger="ckanext.push_errors.logging"):
+            push_message("Test message")
+        assert "SECRET-TOKEN" not in caplog.text
+        assert "https://hooks.slack.com/..." in caplog.text
+        mock_post.assert_called_once_with(self.WEBHOOK, json=ANY, headers=ANY)
+
+    @pytest.mark.ckan_config("ckanext.push_errors.url", WEBHOOK)
+    @patch("ckanext.push_errors.logging.can_send_message", return_value=True)
+    @patch("ckanext.push_errors.logging.requests.post")
+    def test_network_error(self, mock_post, _, caplog):
+        mock_post.side_effect = requests.RequestException("Network error")
+        with caplog.at_level(logging.DEBUG, logger="ckanext.push_errors.logging"):
+            push_message("Test message")
+        assert "SECRET-TOKEN" not in caplog.text
+        assert "Failed to send message to https://hooks.slack.com/..." in caplog.text
