@@ -2,6 +2,7 @@ import json
 import logging
 from datetime import datetime
 from logging import Handler, CRITICAL
+from urllib.parse import urlsplit
 import requests
 from ckan import __version__ as ckan_version
 from ckan.common import current_user
@@ -10,6 +11,18 @@ from ckanext.push_errors import __VERSION__ as push_errors_version
 from ckan.lib import kvstore
 
 log = logging.getLogger(__name__)
+
+
+def safe_url(url):
+    """The URL without its path and query, for the logs.
+
+    Webhook URLs (Slack, Teams, ...) carry their secret in the path or the
+    query string, and the logs are not a safe place for it.
+    """
+    parts = urlsplit(url)
+    if not parts.scheme or not parts.netloc:
+        return url
+    return f'{parts.scheme}://{parts.netloc}/...'
 
 
 def can_send_message():
@@ -110,7 +123,7 @@ def push_message(message, extra_context={}):
     if not url:
         log.warning('push-errors: No URL configured, logging message locally.')
     else:
-        log.debug(f'push-errors Sending message to {url}')
+        log.debug(f'push-errors Sending message to {safe_url(url)}')
 
     # Allow multiple headers in config
     # Decoding headers
@@ -141,7 +154,7 @@ def push_message(message, extra_context={}):
     try:
         response = send_message_to_url(url, headers, data, method)
     except requests.RequestException as e:
-        log.error(f'push-errors: Failed to send message to {url}. Exception: {str(e)}')
+        log.error(f'push-errors: Failed to send message to {safe_url(url)}. Exception: {str(e)}')
         return
 
     if not response:
